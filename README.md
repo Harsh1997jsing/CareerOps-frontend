@@ -1,8 +1,24 @@
 # CareerOps Frontend
 
-A React dashboard for CareerOps, replacing the current `streamlit run
-app/dashboard.py` UI in `../CareerOps`. This folder is new and currently
-empty except for this README — nothing here has been scaffolded yet.
+A React dashboard for CareerOps, replacing the former `streamlit run
+app/dashboard.py` UI in `../CareerOps`. Scaffolded (React + Vite +
+TypeScript, strict mode on) with a sidebar — Dashboard, Explore Jobs,
+Target, Job Scraping — and JWT auth. Dashboard (`GET /jobs`) and Explore
+(`GET /explore/capabilities`, `POST /explore/search`, `POST
+/explore/save`) are wired to live endpoints and verified working end to
+end, including against real MCP job data (HasData). Target and Job
+Scraping are honest placeholder pages: the backend has no HTTP routes for
+company-target or JobSpy ingestion yet (see `../CareerOps/memory/known-gaps.md`),
+so they say so rather than faking functionality. The review/approve flow
+described later in this file (`JobReview`, `DocumentReview`,
+`ApproveRejectBar`) has **not** been built yet — see "Views to cover" for
+what's done vs. still open.
+
+Runs in Docker too — `../CareerOps/docker-compose.yml` builds this repo's
+own `Dockerfile` as its `frontend` service (Vite dev server, HMR via a
+bind-mounted volume, not baked into the image) alongside the backend, so
+`docker compose up -d --build` from `../CareerOps` brings up the whole
+stack including this frontend on `:5173`.
 
 This document is scoped to the frontend: what it's for, how it fits into
 the rest of CareerOps, and the rules for building it. For backend
@@ -30,11 +46,11 @@ touch Postgres directly — it talks to a new HTTP API described below.
 ## Full app architecture
 
 All three ingestion sources below are built and tested in `../CareerOps`
-already (111 tests, 110 passing / 1 skipped pending LibreOffice) — this
-isn't a proposal, it's what's actually in the repo today. The one
-exception: MCP explore has never connected to a real JOBO/HasData server
-yet (no API keys configured), so its capability-detection and result
-parsing are verified against fixtures only — see
+already (174 tests passing, 1 skipped pending LibreOffice) — this isn't a
+proposal, it's what's actually in the repo today. MCP explore has now
+connected to real servers: HasData's Glassdoor/Indeed tools are verified
+end-to-end against live data; Jobo is configured but structurally can't
+return results without OAuth support the backend doesn't implement — see
 `../CareerOps/memory/known-gaps.md`.
 
 ```
@@ -69,11 +85,12 @@ Three ingestion sources (CLAUDE.md rule 2 — LinkedIn excluded from all of them
       └──────────┬───────────┘
                  ▼
       ┌─────────────────────┐      ┌───────────────────────┐
-      │ Postgres (schema.sql) │◄────┤ FastAPI layer — built    │◄──── this frontend
-      │ jobs, job_analysis,   │     │ app/api/ (9 routes, see │      (React + Vite
-      │ generated_documents,  │     │ below) — not yet run     │       + TypeScript,
-      │ applications, ...     │     │ against live Postgres    │       not yet scaffolded)
-      └──────────┬───────────┘     └───────────────────────┘
+      │ Postgres (app/models/,│◄────┤ FastAPI layer — built    │◄──── this frontend
+      │ Alembic migrations)   │     │ app/api/ (17 routes,    │      (React + Vite +
+      │ jobs, job_analysis,   │     │ see below) — verified   │      TypeScript, this
+      │ generated_documents,  │     │ against live Postgres   │      repo, scaffolded)
+      │ applications, ...     │     └───────────────────────┘
+      └──────────┬───────────┘
                  ▲
                  │ human clicks Approve/Reject in this frontend
                  │ human clicks Submit in their OWN browser tab (never this app)
@@ -88,17 +105,19 @@ results are never auto-inserted.
 
 Everything above the FastAPI box is the existing, tested Python codebase
 in `../CareerOps` — this frontend changes none of it. The FastAPI layer
-(`app/api/`) is built and tested (16 tests, mocked DB/MCP calls) but has
-never run against live Postgres — same "untested against real
-infrastructure" caveat as the rest of the backend, see
-`../CareerOps/memory/known-gaps.md`. There's also still no pipeline
-orchestrator, a separate, backend-only gap this frontend doesn't need to
-wait on, since it only reads/writes already-scored jobs and applications.
+(`app/api/`) is built, tested, and now verified against a live Postgres
+instance (see `../CareerOps/memory/known-gaps.md`). There's still no
+pipeline orchestrator, a separate, backend-only gap this frontend doesn't
+need to wait on, since it only reads/writes already-scored jobs and
+applications.
 
-Run it locally with `uvicorn app.api.main:app --reload` from `../CareerOps`
-(needs `DATABASE_URL` reachable, same as the Streamlit dashboard). CORS is
-open to `FRONTEND_ORIGIN` (defaults to `http://localhost:5173`, Vite's
-default dev port).
+Run the backend locally with `uvicorn app.api.main:app --reload` from
+`../CareerOps` (needs `DATABASE_URL` reachable), or run the whole stack —
+this frontend included — with `docker compose up -d --build` from
+`../CareerOps` (see its README's "Running with Docker"). CORS is open to
+`FRONTEND_ORIGIN` (defaults to `http://localhost:5173`, Vite's default dev
+port; both `localhost` and `127.0.0.1` are allow-listed since browsers
+treat them as different origins for the same server).
 
 ### API endpoints this frontend needs
 
@@ -127,57 +146,72 @@ The API is read-heavy by design: this frontend displays what the backend
 pipeline already produced. It never generates documents, scores jobs, or
 calls Anthropic directly — that stays server-side.
 
-## How to build the dashboard
+## How the dashboard is built
 
-Recommended stack: **React + Vite + TypeScript**. Lightweight SPA, no SSR
-needed for an internal review tool.
+Stack: **React + Vite + TypeScript** (strict mode on). Lightweight SPA, no
+SSR needed for an internal review tool.
 
 ```bash
-npm create vite@latest . -- --template react-ts
 npm install
-npm run dev
+npm run dev            # http://localhost:5173
 ```
 
-Suggested structure once scaffolded:
+Or via Docker — see `../CareerOps/docker-compose.yml`'s `frontend` service
+(this repo's own `Dockerfile`, dev-mode with HMR through a bind mount).
+
+Actual structure:
 
 ```
-frontend/
+CareerOps-frontend/
 ├── README.md              (this file)
+├── CONTRACT.md             # wire contract, synced with ../CareerOps/CONTRACT.md
+├── Dockerfile / .dockerignore
 ├── src/
-│   ├── api/                # thin fetch wrappers, one file per resource
+│   ├── api/
+│   │   ├── client.ts        # fetch wrapper: auth header, error shape, console logging
+│   │   ├── auth.ts
 │   │   ├── jobs.ts
-│   │   └── applications.ts
-│   ├── pages/
-│   │   ├── JobList.tsx      # filter/sort jobs by status, fit score
-│   │   ├── JobReview.tsx    # fit analysis + gaps + evidence side by side
-│   │   ├── DocumentReview.tsx  # generated resume/cover letter + claim/ATS check results
-│   │   └── Explore.tsx      # MCP search: query + filters, results list
+│   │   └── explore.ts
+│   ├── context/
+│   │   └── AuthContext.tsx  # token storage, login/logout
 │   ├── components/
-│   │   ├── ApproveRejectBar.tsx
-│   │   ├── ApplyConfirmDialog.tsx   # the explicit "I actually clicked submit" step
-│   │   ├── StatusBadge.tsx
-│   │   └── ExploreResultRow.tsx     # source badge + Apply button, right-aligned
-│   └── types/                # mirrors app/llm/schemas.py + schema.sql shapes
+│   │   ├── Layout.tsx       # sidebar + outlet
+│   │   ├── ProtectedRoute.tsx
+│   │   └── ApiStatus.tsx    # loading/success/error banner, used by every page
+│   ├── pages/
+│   │   ├── Login.tsx
+│   │   ├── Dashboard.tsx    # done — real GET /jobs, status filter
+│   │   ├── Explore.tsx      # done — real search/save/capabilities
+│   │   ├── Target.tsx       # placeholder — no backend route yet
+│   │   └── JobScraping.tsx  # placeholder — no backend route yet
+│   └── types/
+│       └── api.ts           # mirrors CONTRACT.md exactly
 └── .env.example              # VITE_API_BASE_URL=http://localhost:8000
 ```
 
-Views to cover (matching what `app/dashboard.py` does today, per
+**Not yet built:** `JobReview`/`DocumentReview`/`ApproveRejectBar`/
+`ApplyConfirmDialog` — the fit-analysis-next-to-generated-documents review
+flow described below. Dashboard currently only lists jobs; it doesn't yet
+link into a per-job review/approve view.
+
+Views to cover (matching what `app/dashboard.py` used to do, per
 `../CareerOps/CLAUDE.md`):
 
-1. **Job list** — jobs at `READY_FOR_REVIEW` / `REVIEW_REQUIRED`, sortable
-   by fit score, filterable by status/company.
-2. **Job review** — fit analysis, missing requirements/gaps, evidence used,
-   next to the generated resume and cover letter.
-3. **Approve / Reject** — sets `applications.status`. This is explicitly
-   **not** "applied" (see rules below).
-4. **Apply flow** — a button that opens the job posting in a new browser
-   tab (`/applications/{id}/open`), and a *separate*, explicitly-confirmed
-   action for "I actually submitted this" that calls `mark-applied`.
-5. **Explore** — a fifth view, reachable from an "Explore" button on the
-   job list. A search box (title/keywords, location, filters) posts to
-   `/explore/search`; results render as a flat list regardless of which
+1. **Job list — done.** `Dashboard.tsx`: jobs at `READY_FOR_REVIEW` /
+   `REVIEW_REQUIRED` (and others via the status filter), from `GET /jobs`.
+   Not yet sortable by fit score.
+2. **Job review — not built.** Fit analysis, missing requirements/gaps,
+   evidence used, next to the generated resume and cover letter.
+3. **Approve / Reject — not built.** Sets `applications.status`. This is
+   explicitly **not** "applied" (see rules below).
+4. **Apply flow — not built.** A button that opens the job posting in a
+   new browser tab (`/applications/{id}/open`), and a *separate*,
+   explicitly-confirmed action for "I actually submitted this" that calls
+   `mark-applied`.
+5. **Explore — done.** `Explore.tsx`: a search box (query, location) posts
+   to `/explore/search`; results render as a flat list regardless of which
    MCP source they came from. Each row has two elements on its right edge:
-   - a **source badge** (e.g. `JOBO` / `Indeed`) — not a button, just an
+   - a **source badge** (e.g. `hasdata`) — not a button, just an
      indicator of provenance, since claim_validator and hard_filters never
      touch these results and the human should know that
    - an **Apply button** — opens the listing's `apply_url` directly in a
@@ -186,15 +220,16 @@ Views to cover (matching what `app/dashboard.py` does today, per
      until it's Saved. Same effect as every other apply path in this app
      (open a tab, never fill in or submit anything), just a different
      mechanism since there's nothing in Postgres to look up yet.
-   A separate, smaller "Save" affordance (not one of the two right-edge
-   buttons) is what posts the result to `/explore/save` to pull it into
-   the normal pipeline — apply and save are different actions and
-   shouldn't be combined into one button.
-   If `/explore/capabilities` reports a source lacks a capability (e.g.
-   no location filter), disable that filter for that source rather than
-   silently sending it and dropping the results, or hiding the source
-   from the results entirely — surface the gap in the UI (e.g. a "location
-   filter not supported by Indeed" note) instead of failing quietly.
+   A separate, smaller "Save" button (not one of the two right-edge
+   buttons) posts the result to `/explore/save` to pull it into the normal
+   pipeline — apply and save are different actions and aren't combined
+   into one button. If `/explore/capabilities` reports a source lacks a
+   capability (e.g. no location filter), that filter input is disabled
+   rather than silently sent and dropped.
+   Verified end-to-end against live MCP data: HasData's Glassdoor/Indeed
+   tools return real jobs through this page. Jobo is configured but
+   structurally can't return anything without OAuth support the backend
+   doesn't have yet — see `../CareerOps/memory/known-gaps.md`.
 
 ## Rules for frontend
 
@@ -235,9 +270,9 @@ rule #1 and #5.
 7. **API base URL is configurable, never hardcoded** — read from
    `VITE_API_BASE_URL`, mirroring how the backend rule requires
    `os.environ["ANTHROPIC_MODEL"]` instead of a hardcoded model string.
-8. **TypeScript strict mode on.** Types for API responses should mirror
-   `../CareerOps/app/llm/schemas.py` and `schema.sql` shapes by hand until/
-   unless the API layer starts generating an OpenAPI schema to derive them
-   from.
+8. **TypeScript strict mode on** (`tsconfig.app.json`). `src/types/api.ts`
+   mirrors `../CareerOps/CONTRACT.md` (and, one level deeper,
+   `app/api/schemas.py`/`app/models/`) by hand until/unless the API layer
+   starts generating an OpenAPI schema to derive them from.
 9. No comments explaining *what* code does; only *why*, matching the
    convention already used across `../CareerOps`.

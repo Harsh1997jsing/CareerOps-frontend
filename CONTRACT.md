@@ -5,11 +5,13 @@ Keeps this repo and `../CareerOps` (backend) in sync. This file and
 each side. If they disagree, one of them is wrong — fix both in the same
 change, never just one.
 
-**Nothing here is implemented yet** — this folder is still just a README
-(`README.md`), no React app scaffolded. This file exists now so the
-contract is pinned down *before* code exists, so the first API client
-code written here has an exact target instead of guessing from memory of
-a conversation.
+Implemented in `src/types/api.ts` (types, mirroring the block below
+exactly) and `src/api/*.ts` (one thin fetch-wrapper file per resource,
+built on `src/api/client.ts`'s shared auth/error handling) — `Dashboard.tsx`
+and `Explore.tsx` are wired to these and verified against the live
+backend. `auth`/`applications` admin routes and `/jobs/{id}`,
+`/jobs/{id}/documents` have types but no UI consuming them yet (no job-
+review/approve view exists — see `README.md`'s "Views to cover").
 
 **Rule:** if you're building against this and the running backend doesn't
 actually match what's written here, that's a bug — either the backend
