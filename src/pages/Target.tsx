@@ -1,17 +1,92 @@
+import { useEffect, useState } from 'react';
+import { listTargets, searchTargets } from '../api/targets';
+import { ApiError } from '../api/client';
+import { ApiStatus, type ApiState } from '../components/ApiStatus';
+import { DiscoveredResults } from '../components/DiscoveredResults';
+import type { CompanyTargetOut, ExploreResultOut } from '../types/api';
+
 export function Target() {
+  const [targets, setTargets] = useState<CompanyTargetOut[]>([]);
+  const [listState, setListState] = useState<ApiState>('idle');
+  const [listError, setListError] = useState<string | undefined>();
+  const [results, setResults] = useState<ExploreResultOut[]>([]);
+  const [searchState, setSearchState] = useState<ApiState>('idle');
+  const [searchError, setSearchError] = useState<string | undefined>();
+
+  useEffect(() => {
+    setListState('loading');
+    listTargets()
+      .then((result) => {
+        setTargets(result);
+        setListState('success');
+      })
+      .catch((err) => {
+        setListState('error');
+        setListError(err instanceof ApiError ? err.message : 'Unknown error');
+      });
+  }, []);
+
+  const handleSearch = async () => {
+    setSearchState('loading');
+    setSearchError(undefined);
+    try {
+      const found = await searchTargets();
+      setResults(found);
+      setSearchState('success');
+    } catch (err) {
+      setSearchState('error');
+      setSearchError(err instanceof ApiError ? err.message : 'Unknown error');
+    }
+  };
+
   return (
     <div>
       <h1>Target</h1>
-      <p className="page-hint">Manual company targets — Greenhouse / Lever board ingestion.</p>
+      <p className="page-hint">
+        Manual company targets — Greenhouse / Lever board search, from <code>GET /targets</code>{' '}
+        and <code>POST /targets/search</code>. Nothing is added to the Dashboard until you select
+        results below and add them.
+      </p>
 
-      <div className="not-wired-notice">
-        <strong>Not wired to the API yet.</strong> The backend has no HTTP route for this —
-        company targets live in <code>../CareerOps/data/companies.yaml</code> and are only run via
-        a Python call (<code>app/sources/targets.py:ingest_all()</code>), not over HTTP. Adding a
-        route here (e.g. <code>GET/POST /targets</code>, <code>POST /targets/ingest</code>) is a
-        backend change to make before this page can do anything real — see
-        <code> ../CareerOps/CONTRACT.md</code> for the endpoints that do exist today.
+      <ApiStatus state={listState} error={listError} />
+
+      {listState === 'success' && targets.length === 0 && (
+        <p className="empty-state">
+          No company targets configured — add entries to the backend's{' '}
+          <code>data/companies.yaml</code> before searching.
+        </p>
+      )}
+
+      {targets.length > 0 && (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Company</th>
+              <th>Identifier</th>
+            </tr>
+          </thead>
+          <tbody>
+            {targets.map((t) => (
+              <tr key={`${t.source}-${t.identifier}`}>
+                <td>{t.source}</td>
+                <td>{t.company}</td>
+                <td>{t.identifier}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="toolbar">
+        <button type="button" onClick={handleSearch} disabled={searchState === 'loading' || targets.length === 0}>
+          {searchState === 'loading' ? 'Searching…' : 'Search'}
+        </button>
       </div>
+
+      <ApiStatus state={searchState} error={searchError} />
+
+      <DiscoveredResults results={results} />
     </div>
   );
 }

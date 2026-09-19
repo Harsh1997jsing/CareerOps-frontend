@@ -29,6 +29,7 @@ export interface JobListItemOut {
   location: string;
   url: string;
   status: string;
+  posted_at?: string;
   fit_score?: number;
   confidence?: string;
   strong_matches: unknown[];
@@ -55,6 +56,11 @@ export interface ApplicationActionOut {
   status: string;
 }
 
+export interface JobStatusActionOut {
+  job_id: number;
+  status: string;
+}
+
 export interface ExploreSearchRequest {
   query: string;
   filters?: Record<string, unknown>;
@@ -71,6 +77,7 @@ export interface ExploreResultOut {
   employment_type?: string;
   salary_min?: number;
   salary_max?: number;
+  posted_at?: string;
 }
 
 export type ExploreSaveRequest = ExploreResultOut;
@@ -81,6 +88,20 @@ export interface ExploreSaveResponseOut {
 
 export interface CapabilityMatrixOut {
   flags: Record<string, boolean>;
+  required_filters: string[];
+}
+
+export interface CompanyTargetOut {
+  source: string;
+  company: string;
+  identifier: string;
+}
+
+export interface ScrapeJobspyRequest {
+  search_term: string;
+  location?: string;
+  sites?: string[];
+  results_wanted?: number;
 }
 
 // 422 (request validation failure) uses a different `detail` shape than

@@ -7,11 +7,12 @@ change, never just one.
 
 Implemented in `src/types/api.ts` (types, mirroring the block below
 exactly) and `src/api/*.ts` (one thin fetch-wrapper file per resource,
-built on `src/api/client.ts`'s shared auth/error handling) — `Dashboard.tsx`
-and `Explore.tsx` are wired to these and verified against the live
-backend. `auth`/`applications` admin routes and `/jobs/{id}`,
-`/jobs/{id}/documents` have types but no UI consuming them yet (no job-
-review/approve view exists — see `README.md`'s "Views to cover").
+built on `src/api/client.ts`'s shared auth/error handling) — `Dashboard.tsx`,
+`Explore.tsx`, `Target.tsx`, and `JobScraping.tsx` are wired to these and
+verified against the live backend. `auth`/`applications` admin routes and
+`/jobs/{id}`, `/jobs/{id}/documents` have types but no UI consuming them
+yet (no job-review/approve view exists — see `README.md`'s "Views to
+cover").
 
 **Rule:** if you're building against this and the running backend doesn't
 actually match what's written here, that's a bug — either the backend
@@ -21,7 +22,7 @@ file to match. Don't just adapt frontend code silently to whatever the
 backend happens to return today — that's how the two files quietly stop
 meaning anything.
 
-**Contract version: 1 — 2026-09-18.** Must equal `../CareerOps/CONTRACT.md`'s
+**Contract version: 5 — 2026-09-19.** Must equal `../CareerOps/CONTRACT.md`'s
 version exactly. If they diverge, treat it as a bug to fix, not a note to
 read around.
 
@@ -55,16 +56,21 @@ read around.
 | GET | `/auth/users` | bearer + admin | — | `UserOut[]` | 403 non-admin |
 | DELETE | `/auth/users/{user_id}` | bearer + admin | — | `{"deleted": bool, "user_id": int}` | 403 protected default admin, 404 not found |
 | POST | `/auth/tenants` | bearer + admin | `TenantCreateRequest` | `TenantOut` (201) | 409 duplicate slug |
-| GET | `/jobs` | bearer | query: `status?`, `limit=50` (1-200), `offset=0` | `JobListItemOut[]` | Job list page |
+| GET | `/jobs` | bearer | query: `status?`, `q?` (description substring, case-insensitive), `posted_within_days?` (≥1), `limit=50` (1-200), `offset=0` | `JobListItemOut[]` | Dashboard — `posted_within_days` matches `posted_at`, falling back to `collected_at` when unknown |
 | GET | `/jobs/{job_id}` | bearer | — | `JobDetailOut` | 404. Job review page |
 | GET | `/jobs/{job_id}/documents` | bearer | — | `GeneratedDocumentOut[]` | Document review page |
+| POST | `/jobs/{job_id}/reject` | bearer | — | `JobStatusActionOut` | 404. Dashboard's "Reject selected" — sets `Job.status` directly, **not** the same as `/applications/{id}/reject` (see "Known gaps" below) |
+| POST | `/jobs/{job_id}/restore` | bearer | — | `JobStatusActionOut` | 404. Undoes reject |
 | POST | `/applications/{application_id}/approve` | bearer | — | `ApplicationActionOut` | 404. Approve/Reject bar |
 | POST | `/applications/{application_id}/reject` | bearer | — | `ApplicationActionOut` | 404. Approve/Reject bar |
 | POST | `/applications/{application_id}/open` | bearer | — | `ApplicationActionOut` | 404. Opens the posting URL **server-side**, not in the caller's browser — see below |
 | POST | `/applications/{application_id}/mark-applied` | bearer | — | `ApplicationActionOut` | 404. The apply-confirm dialog's action |
-| GET | `/explore/capabilities` | bearer | — | `Record<string, CapabilityMatrixOut>` keyed by MCP source name | Explore page — drives which filters to show/disable per source |
-| POST | `/explore/search` | bearer | `ExploreSearchRequest` | `ExploreResultOut[]` | Explore page search |
-| POST | `/explore/save` | bearer | `ExploreSaveRequest` | `ExploreSaveResponseOut` | Explore page "Save" action |
+| GET | `/explore/capabilities` | bearer | — | `Record<string, CapabilityMatrixOut>` keyed by MCP source name | Explore page — drives which filters to show/disable per source, and which are required |
+| POST | `/explore/search` | bearer | `ExploreSearchRequest` | `ExploreResultOut[]` | Explore page search — `filters.posted_within_days` (number) drops results older than N days, applied server-side after merging every source |
+| POST | `/explore/save` | bearer | `ExploreSaveRequest` | `ExploreSaveResponseOut` | **Shared "Add to Dashboard" action for Explore, Target, and Job Scraping alike** — not Explore-only despite the path, see below |
+| GET | `/targets` | bearer | — | `CompanyTargetOut[]` | Target page — lists configured Greenhouse/Lever targets |
+| POST | `/targets/search` | bearer | — | `ExploreResultOut[]` | Target page "Search" action — does **not** save; user picks which results to add via `/explore/save` |
+| POST | `/scrape/jobspy` | bearer | `ScrapeJobspyRequest` | `ExploreResultOut[]` | Job Scraping page "Scrape" action — never `linkedin`, up to ~90s, does **not** save; user picks which results to add via `/explore/save` |
 
 ## Types
 
@@ -79,16 +85,20 @@ TenantOut                { id: number, name: string, slug: string, is_active: bo
 TenantCreateRequest      { name: string, slug: string (pattern ^[a-z0-9]+(-[a-z0-9]+)*$, max 63 chars) }
 
 ApplicationOut           { application_id: number, status: string, applied_at?: string }
-JobListItemOut           { job_id: number, company: string, title: string, location: string, url: string, status: string, fit_score?: number, confidence?: string, strong_matches: any[], missing_skills: any[], risks: any[] }
+JobListItemOut           { job_id: number, company: string, title: string, location: string, url: string, status: string, posted_at?: string, fit_score?: number, confidence?: string, strong_matches: any[], missing_skills: any[], risks: any[] }
 JobDetailOut              = JobListItemOut & { description: string, application?: ApplicationOut }
 GeneratedDocumentOut     { id: number, type: string, file_path: string, version: number, claim_check_passed?: boolean, ats_check_passed?: boolean }
 ApplicationActionOut     { application_id: number, status: string }
+JobStatusActionOut       { job_id: number, status: string }
 
 ExploreSearchRequest     { query: string, filters?: object = {} }
-ExploreResultOut          { source: string, source_job_id: string, company: string, title: string, location: string, url: string, description: string, employment_type?: string, salary_min?: number, salary_max?: number }
+ExploreResultOut          { source: string, source_job_id: string, company: string, title: string, location: string, url: string, description: string, employment_type?: string, salary_min?: number, salary_max?: number, posted_at?: string }
 ExploreSaveRequest        = ExploreResultOut  (same shape, posted back to /explore/save)
 ExploreSaveResponseOut   { inserted: boolean }
-CapabilityMatrixOut      { flags: Record<string, boolean> }
+CapabilityMatrixOut      { flags: Record<string, boolean>, required_filters: string[] }
+
+CompanyTargetOut         { source: string, company: string, identifier: string }
+ScrapeJobspyRequest      { search_term: string, location?: string, sites?: string[], results_wanted?: number = 50 }
 ```
 
 ## What this frontend needs to design around
@@ -96,6 +106,8 @@ CapabilityMatrixOut      { flags: Record<string, boolean> }
 - **No `tenant_id` on jobs/applications/documents** — every authenticated user currently sees every job, regardless of tenant. Don't build UI that implies per-tenant job isolation exists yet.
 - **`/applications/{id}/open` opens a browser tab on the API's host**, not the browser running this app. In production (frontend and API on different machines) this button would do nothing visible to the user — flag this explicitly if/when this app is ever deployed somewhere other than the same machine as the API, per `README.md`'s "why a separate frontend" section.
 - **Timestamps arrive as ISO 8601 strings** — parse with `new Date(value)` or a date library, don't assume any other format.
+- **`ExploreResultOut.posted_at` is approximate for HasData results** (derived server-side from an integer "days old" HasData returns, not a real timestamp) and can be `null` when no date info was available at all — don't render it as if it were exact, and always guard for `null`.
+- **No `Application` row exists for any job today** (confirmed 2026-09-19 — nothing in the backend creates one). `job.application` on `JobDetailOut` will be `null` for every job you'll actually see, and every `/applications/{id}/*` route is unreachable as a result. `/jobs/{id}/reject` and `/jobs/{id}/restore` exist specifically to give the Dashboard a working "hide/unhide" action that doesn't depend on that unbuilt workflow — don't route a bulk Dashboard action through `/applications/{id}/reject`, it will always 404. The "Apply all" bulk action opens each selected job's `url` directly in the browser (`window.open`, client-side, no backend call) rather than calling `/applications/{id}/open` — that route opens a tab on the **API's** host, not the caller's (see below), so it's useless for this anyway.
 
 ## When the backend changes
 

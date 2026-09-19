@@ -1,17 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { getCapabilities, saveResult, search } from '../api/explore';
+import { getCapabilities, search } from '../api/explore';
 import { ApiError } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
+import { DiscoveredResults } from '../components/DiscoveredResults';
 import type { CapabilityMatrixOut, ExploreResultOut } from '../types/api';
 
 export function Explore() {
   const [query, setQuery] = useState('');
   const [location, setLocation] = useState('');
+  const [postedWithinDays, setPostedWithinDays] = useState('');
   const [results, setResults] = useState<ExploreResultOut[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, CapabilityMatrixOut>>({});
   const [state, setState] = useState<ApiState>('idle');
   const [error, setError] = useState<string | undefined>();
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Rule from ../README.md: if a source lacks a capability, disable that
@@ -22,15 +23,35 @@ export function Explore() {
   }, []);
 
   const hasAnySource = Object.keys(capabilities).length > 0;
-  const anySupportsLocation = Object.values(capabilities).some((c) => c.flags?.location);
+  // Bug fix (2026-09-19): this checked `c.flags.location`, a key that has
+  // never existed — the real flag name is `location_filter` (see
+  // CAPABILITY_KEYWORDS in app/sources/mcp/capabilities.py). Reading the
+  // wrong key made this permanently false, which permanently disabled the
+  // Location input the moment any source was configured — a hard deadlock
+  // once Location also became required (see locationRequired below): the
+  // field was disabled so it could never be filled in, but handleSearch
+  // still refused to submit without it.
+  const anySupportsLocation = Object.values(capabilities).some((c) => c.flags?.location_filter);
+  // CONTRACT.md: a source's required_filters lists filter keys its search
+  // tool's own schema requires — omitting one guarantees that source
+  // returns nothing (e.g. HasData's Glassdoor tool requires "location").
+  const locationRequired = Object.values(capabilities).some((c) =>
+    c.required_filters?.includes('location'),
+  );
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
+    if (locationRequired && !location) {
+      setState('error');
+      setError('Location is required — at least one configured source can only return results with one.');
+      return;
+    }
     setState('loading');
     setError(undefined);
     try {
       const filters: Record<string, unknown> = {};
       if (location) filters.location = location;
+      if (postedWithinDays) filters.posted_within_days = Number(postedWithinDays);
       const found = await search({ query, filters });
       setResults(found);
       setState('success');
@@ -40,23 +61,12 @@ export function Explore() {
     }
   };
 
-  const handleSave = async (result: ExploreResultOut) => {
-    try {
-      const res = await saveResult(result);
-      if (res.inserted) {
-        setSavedIds((prev) => new Set(prev).add(result.source_job_id));
-      }
-    } catch (err) {
-      console.error('[explore] save failed', err);
-    }
-  };
-
   return (
     <div>
       <h1>Explore Jobs</h1>
       <p className="page-hint">
-        Live search via MCP sources (<code>POST /explore/search</code>) — results aren't saved to
-        the pipeline unless you click Save.
+        Live search via MCP sources (<code>POST /explore/search</code>) — nothing is added to the
+        Dashboard until you select results below and add them.
       </p>
 
       {!hasAnySource && (
@@ -73,41 +83,30 @@ export function Explore() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="backend engineer" required />
         </label>
         <label>
-          Location
+          Location{locationRequired ? ' *' : ''}
           <input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             placeholder="Bangalore"
             disabled={hasAnySource && !anySupportsLocation}
+            required={locationRequired}
           />
+        </label>
+        <label>
+          Posted within
+          <select value={postedWithinDays} onChange={(e) => setPostedWithinDays(e.target.value)}>
+            <option value="">Any time</option>
+            <option value="1">Last 1 day</option>
+            <option value="3">Last 3 days</option>
+            <option value="7">Last 7 days</option>
+          </select>
         </label>
         <button type="submit">Search</button>
       </form>
 
       <ApiStatus state={state} error={error} />
 
-      {results.map((result) => (
-        <div className="result-row" key={`${result.source}-${result.source_job_id}`}>
-          <div className="result-main">
-            <strong>{result.title}</strong> — {result.company} ({result.location})
-            <div className="result-description">{result.description.slice(0, 160)}…</div>
-          </div>
-          <div className="result-actions">
-            <span className="source-badge">{result.source}</span>
-            <button type="button" onClick={() => window.open(result.url, '_blank', 'noreferrer')}>
-              Apply
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={savedIds.has(result.source_job_id)}
-              onClick={() => handleSave(result)}
-            >
-              {savedIds.has(result.source_job_id) ? 'Saved' : 'Save'}
-            </button>
-          </div>
-        </div>
-      ))}
+      <DiscoveredResults results={results} />
     </div>
   );
 }
