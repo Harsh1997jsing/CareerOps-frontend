@@ -102,6 +102,7 @@ export interface ScrapeJobspyRequest {
   location?: string;
   sites?: string[];
   results_wanted?: number;
+  experience?: string;
 }
 
 // 422 (request validation failure) uses a different `detail` shape than

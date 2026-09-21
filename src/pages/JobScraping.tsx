@@ -12,6 +12,7 @@ const SITES = ['indeed', 'glassdoor', 'naukri', 'zip_recruiter', 'google'];
 export function JobScraping() {
   const [searchTerm, setSearchTerm] = useState('');
   const [location, setLocation] = useState('');
+  const [experience, setExperience] = useState('');
   const [sites, setSites] = useState<Set<string>>(new Set(SITES));
   const [state, setState] = useState<ApiState>('idle');
   const [error, setError] = useState<string | undefined>();
@@ -35,6 +36,7 @@ export function JobScraping() {
         search_term: searchTerm,
         location: location || undefined,
         sites: Array.from(sites),
+        experience: experience || undefined,
       });
       setResults(found);
       setState('success');
@@ -61,6 +63,15 @@ export function JobScraping() {
         <label>
           Location
           <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Bangalore" />
+        </label>
+        <label>
+          Experience
+          <input
+            value={experience}
+            onChange={(e) => setExperience(e.target.value)}
+            placeholder="Senior"
+            title="Matched against Naukri's experience field after scraping — sites that don't report one are excluded when this is set."
+          />
         </label>
         <fieldset>
           <legend>Sites</legend>

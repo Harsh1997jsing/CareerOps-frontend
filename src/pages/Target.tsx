@@ -12,6 +12,7 @@ export function Target() {
   const [results, setResults] = useState<ExploreResultOut[]>([]);
   const [searchState, setSearchState] = useState<ApiState>('idle');
   const [searchError, setSearchError] = useState<string | undefined>();
+  const [experience, setExperience] = useState('');
 
   useEffect(() => {
     setListState('loading');
@@ -30,7 +31,7 @@ export function Target() {
     setSearchState('loading');
     setSearchError(undefined);
     try {
-      const found = await searchTargets();
+      const found = await searchTargets(experience || undefined);
       setResults(found);
       setSearchState('success');
     } catch (err) {
@@ -79,6 +80,15 @@ export function Target() {
       )}
 
       <div className="toolbar">
+        <label>
+          Experience
+          <input
+            value={experience}
+            onChange={(e) => setExperience(e.target.value)}
+            placeholder="Senior"
+            title="Matched against each posting's title/description — Greenhouse/Lever expose no structured experience field."
+          />
+        </label>
         <button type="button" onClick={handleSearch} disabled={searchState === 'loading' || targets.length === 0}>
           {searchState === 'loading' ? 'Searching…' : 'Search'}
         </button>

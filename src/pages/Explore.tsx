@@ -9,6 +9,7 @@ export function Explore() {
   const [query, setQuery] = useState('');
   const [location, setLocation] = useState('');
   const [postedWithinDays, setPostedWithinDays] = useState('');
+  const [experience, setExperience] = useState('');
   const [results, setResults] = useState<ExploreResultOut[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, CapabilityMatrixOut>>({});
   const [state, setState] = useState<ApiState>('idle');
@@ -38,6 +39,7 @@ export function Explore() {
   const locationRequired = Object.values(capabilities).some((c) =>
     c.required_filters?.includes('location'),
   );
+  const anySupportsExperience = Object.values(capabilities).some((c) => c.flags?.experience_filter);
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
@@ -52,6 +54,7 @@ export function Explore() {
       const filters: Record<string, unknown> = {};
       if (location) filters.location = location;
       if (postedWithinDays) filters.posted_within_days = Number(postedWithinDays);
+      if (experience) filters.experience = experience;
       const found = await search({ query, filters });
       setResults(found);
       setState('success');
@@ -100,6 +103,15 @@ export function Explore() {
             <option value="3">Last 3 days</option>
             <option value="7">Last 7 days</option>
           </select>
+        </label>
+        <label>
+          Experience
+          <input
+            value={experience}
+            onChange={(e) => setExperience(e.target.value)}
+            placeholder="Senior"
+            disabled={hasAnySource && !anySupportsExperience}
+          />
         </label>
         <button type="submit">Search</button>
       </form>
