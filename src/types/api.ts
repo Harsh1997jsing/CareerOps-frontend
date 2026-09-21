@@ -61,6 +61,10 @@ export interface JobStatusActionOut {
   status: string;
 }
 
+export interface GenerateDocumentRequest {
+  type: 'resume' | 'cover_letter';
+}
+
 export interface ExploreSearchRequest {
   query: string;
   filters?: Record<string, unknown>;

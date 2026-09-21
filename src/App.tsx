@@ -8,6 +8,7 @@ import { Explore } from './pages/Explore';
 import { Target } from './pages/Target';
 import { JobScraping } from './pages/JobScraping';
 import { Chat } from './pages/Chat';
+import { JobDetail } from './pages/JobDetail';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             }
           >
             <Route path="/" element={<Dashboard />} />
+            <Route path="/jobs/:jobId" element={<JobDetail />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/target" element={<Target />} />

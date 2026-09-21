@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { listJobs, rejectJob, restoreJob } from '../api/jobs';
 import { ApiError } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
@@ -182,6 +183,7 @@ export function Dashboard() {
                 <th>Status</th>
                 <th>Posted</th>
                 <th>Fit score</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -206,6 +208,9 @@ export function Dashboard() {
                   </td>
                   <td>{formatPostedAt(job.posted_at) ?? '—'}</td>
                   <td>{job.fit_score ?? '—'}</td>
+                  <td>
+                    <Link to={`/jobs/${job.job_id}`}>Details</Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
