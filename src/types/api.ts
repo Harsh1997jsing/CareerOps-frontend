@@ -86,6 +86,27 @@ export interface ExploreSaveResponseOut {
   inserted: boolean;
 }
 
+// A staged chat-search result — ExploreResultOut's fields plus its own
+// staged-row id, so it's already a valid ExploreSaveRequest (see
+// api/explore.ts's saveResult, the single shared save path every
+// discovery source — including chat — saves through).
+export interface ChatSearchResultOut extends ExploreResultOut {
+  id: number;
+}
+
+export interface ChatMessageRequest {
+  session_id: string;
+  message: string;
+  known_filters: Record<string, unknown>;
+}
+
+export interface ChatMessageResponse {
+  reply: string;
+  filters: Record<string, unknown>;
+  ready: boolean;
+  results: ChatSearchResultOut[];
+}
+
 export interface CapabilityMatrixOut {
   flags: Record<string, boolean>;
   required_filters: string[];

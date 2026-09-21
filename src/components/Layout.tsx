@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
+  { to: '/chat', label: 'Chat Search' },
   { to: '/explore', label: 'Explore Jobs' },
   { to: '/target', label: 'Target' },
   { to: '/job-scraping', label: 'Job Scraping' },

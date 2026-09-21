@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Explore } from './pages/Explore';
 import { Target } from './pages/Target';
 import { JobScraping } from './pages/JobScraping';
+import { Chat } from './pages/Chat';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
             }
           >
             <Route path="/" element={<Dashboard />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/target" element={<Target />} />
             <Route path="/job-scraping" element={<JobScraping />} />

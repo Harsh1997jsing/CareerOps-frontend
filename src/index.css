@@ -283,6 +283,31 @@ label {
   flex-shrink: 0;
 }
 
+.chat-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.chat-turn {
+  font-size: 14px;
+}
+
+.chat-turn-assistant {
+  color: var(--text);
+}
+
+.chat-turn-user {
+  color: var(--accent);
+}
+
 /* API status banners */
 
 .api-status {
