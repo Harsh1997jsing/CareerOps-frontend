@@ -15,12 +15,12 @@ function formatPostedAt(value?: string): string | null {
   return `Posted ${days} days ago`;
 }
 
-// `summary` isn't part of ExploreResultOut (Explore/Target/Job Scraping
-// results never have one) — only AI Search's staged results do, batched
-// server-side (see ChatSearchResultOut). Widening it here, optionally,
-// lets this one shared component show it without pulling a chat-specific
-// type into a component the other three pages also render.
-type DiscoveredResult = ExploreResultOut & { summary?: string };
+// `summary`/`id` aren't part of ExploreResultOut (Explore/Target/Job
+// Scraping results never have either) — only AI Search's staged results
+// do (ChatSearchResultOut). Widening them here, optionally, lets this one
+// shared component use them without pulling a chat-specific type into a
+// component the other three pages also render.
+type DiscoveredResult = ExploreResultOut & { id?: number; summary?: string };
 
 /**
  * Shared "search results → pick some → add to Dashboard" list, used by
@@ -35,7 +35,11 @@ export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) 
   const [bulkState, setBulkState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [bulkMessage, setBulkMessage] = useState<string | undefined>();
 
-  const keyOf = (r: ExploreResultOut) => `${r.source}-${r.source_job_id}`;
+  // AI Search's staged rows have a stable database id — prefer it over
+  // source-source_job_id (which is only a de-facto-unique pairing for
+  // the other three pages, never guaranteed unique within one AI Search
+  // result set the way a primary key is).
+  const keyOf = (r: DiscoveredResult) => (r.id != null ? `chat-${r.id}` : `${r.source}-${r.source_job_id}`);
 
   const toggleSelected = (key: string) => {
     setSelected((prev) => {

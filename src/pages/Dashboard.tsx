@@ -111,10 +111,16 @@ export function Dashboard() {
           Status
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All</option>
+            <option value="DISCOVERED">DISCOVERED</option>
             <option value="READY_FOR_REVIEW">READY_FOR_REVIEW</option>
             <option value="REVIEW_REQUIRED">REVIEW_REQUIRED</option>
-            <option value="REJECTED">REJECTED</option>
-            <option value="APPROVED">APPROVED</option>
+            {/* REJECT (POST /jobs/{id}/analyze's ineligible/hard-filtered outcome)
+                and REJECTED (POST /jobs/{id}/reject's manual hide) are both
+                real Job.status values but distinct mechanisms — see
+                CONTRACT.md. "APPROVED" was removed: it's an
+                Application.status value, never a Job.status one. */}
+            <option value="REJECT">REJECT (auto)</option>
+            <option value="REJECTED">REJECTED (manual)</option>
           </select>
         </label>
         <label>
