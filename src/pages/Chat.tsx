@@ -66,11 +66,11 @@ export function Chat() {
 
   return (
     <div>
-      <h1>Chat Search</h1>
+      <h1>AI Search</h1>
       <p className="page-hint">
-        Describe what you're looking for — filters are pulled out of the conversation for you
-        (<code>POST /chat/message</code>). Nothing is added to the Dashboard until you select
-        results below and add them, same as Explore/Target/Job Scraping.
+        Describe what you're looking for — filters are pulled out of the conversation for you,
+        and the assistant picks which source(s) to search (<code>POST /chat/message</code>).
+        Nothing is added to the Dashboard until you select results below and add them.
       </p>
 
       <div className="chat-transcript">

@@ -1,12 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+// Explore/Target/Job Scraping stay mounted in App.tsx (reachable by direct
+// URL) but are off the sidebar — AI Search now covers all three of their
+// sources itself, picking whichever the query calls for (see
+// app/services/chat_search.py's extract_intent).
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/chat', label: 'Chat Search' },
-  { to: '/explore', label: 'Explore Jobs' },
-  { to: '/target', label: 'Target' },
-  { to: '/job-scraping', label: 'Job Scraping' },
+  { to: '/chat', label: 'AI Search' },
 ];
 
 export function Layout() {

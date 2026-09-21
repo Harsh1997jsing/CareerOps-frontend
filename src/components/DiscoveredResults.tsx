@@ -15,14 +15,21 @@ function formatPostedAt(value?: string): string | null {
   return `Posted ${days} days ago`;
 }
 
+// `summary` isn't part of ExploreResultOut (Explore/Target/Job Scraping
+// results never have one) — only AI Search's staged results do, batched
+// server-side (see ChatSearchResultOut). Widening it here, optionally,
+// lets this one shared component show it without pulling a chat-specific
+// type into a component the other three pages also render.
+type DiscoveredResult = ExploreResultOut & { summary?: string };
+
 /**
  * Shared "search results → pick some → add to Dashboard" list, used by
- * Explore, Target, and Job Scraping alike. None of those three save
+ * Explore, Target, Job Scraping, and AI Search alike. None of those save
  * anything on their own — every result here is un-persisted until the
  * user explicitly selects it and adds it, via the shared
  * POST /explore/save route (CONTRACT.md).
  */
-export function DiscoveredResults({ results }: { results: ExploreResultOut[] }) {
+export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [bulkState, setBulkState] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -110,7 +117,9 @@ export function DiscoveredResults({ results }: { results: ExploreResultOut[] }) 
             <div className="result-main">
               <strong>{result.title}</strong> — {result.company} ({result.location})
               {postedLabel && <span className="posted-at"> · {postedLabel}</span>}
-              <div className="result-description">{result.description.slice(0, 160)}…</div>
+              <div className="result-description">
+                {result.summary ?? `${result.description.slice(0, 160)}…`}
+              </div>
             </div>
             <div className="result-actions">
               <span className="source-badge">{result.source}</span>

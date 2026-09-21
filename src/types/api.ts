@@ -89,9 +89,12 @@ export interface ExploreSaveResponseOut {
 // A staged chat-search result — ExploreResultOut's fields plus its own
 // staged-row id, so it's already a valid ExploreSaveRequest (see
 // api/explore.ts's saveResult, the single shared save path every
-// discovery source — including chat — saves through).
+// discovery source — including chat — saves through). `summary` is a
+// one-line AI summary of the JD, batched for the whole result set in one
+// call server-side (see app/services/chat_search.py's summarize_results).
 export interface ChatSearchResultOut extends ExploreResultOut {
   id: number;
+  summary?: string;
 }
 
 export interface ChatMessageRequest {
