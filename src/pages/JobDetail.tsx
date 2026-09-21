@@ -1,15 +1,34 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { analyzeJob, generateDocument, getJob, listDocuments } from '../api/jobs';
+import {
+  analyzeJob,
+  applyDocumentEdit,
+  generateDocument,
+  getJob,
+  listDocuments,
+  suggestDocumentEdit,
+} from '../api/jobs';
 import { approveApplication, markApplied, openApplication, rejectApplication } from '../api/applications';
 import { ApiError } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
-import type { GeneratedDocumentOut, JobDetailOut } from '../types/api';
+import type { DocumentEditSuggestionOut, GeneratedDocumentOut, JobDetailOut } from '../types/api';
 
 function checkLabel(passed?: boolean): string {
   if (passed === true) return 'Passed';
   if (passed === false) return 'Failed';
   return 'Not run';
+}
+
+// Flattens either half of a DocumentEditSuggestionOut (resume sections or
+// cover letter text) into one block of text — both "current" and
+// "proposed" render the same way, just fed different halves.
+function flattenPreview(
+  sections?: { section: string; content: string }[],
+  content?: string,
+): string {
+  if (content != null) return content;
+  if (sections) return sections.map((s) => `${s.section.toUpperCase()}:\n${s.content}`).join('\n\n');
+  return '';
 }
 
 export function JobDetail() {
@@ -29,6 +48,14 @@ export function JobDetail() {
 
   const [actionState, setActionState] = useState<ApiState>('idle');
   const [actionError, setActionError] = useState<string | undefined>();
+
+  const [editingDocId, setEditingDocId] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState('');
+  const [suggestion, setSuggestion] = useState<DocumentEditSuggestionOut | null>(null);
+  const [suggestState, setSuggestState] = useState<ApiState>('idle');
+  const [suggestError, setSuggestError] = useState<string | undefined>();
+  const [applyState, setApplyState] = useState<ApiState>('idle');
+  const [applyError, setApplyError] = useState<string | undefined>();
 
   const load = () => {
     setLoadState('loading');
@@ -84,6 +111,53 @@ export function JobDetail() {
     } catch (err) {
       setActionState('error');
       setActionError(err instanceof ApiError ? err.message : 'Unknown error');
+    }
+  };
+
+  const startEdit = (docId: number) => {
+    setEditingDocId(docId);
+    setFeedback('');
+    setSuggestion(null);
+    setSuggestError(undefined);
+    setSuggestState('idle');
+  };
+
+  const cancelEdit = () => {
+    // Discard is purely client-side — suggest-edit never wrote anything,
+    // so there's nothing to undo server-side.
+    setEditingDocId(null);
+    setSuggestion(null);
+  };
+
+  const handleSuggest = async () => {
+    if (editingDocId == null || !feedback.trim()) return;
+    setSuggestState('loading');
+    setSuggestError(undefined);
+    try {
+      const result = await suggestDocumentEdit(id, editingDocId, { feedback });
+      setSuggestion(result);
+      setSuggestState('success');
+    } catch (err) {
+      setSuggestState('error');
+      setSuggestError(err instanceof ApiError ? err.message : 'Unknown error');
+    }
+  };
+
+  const handleAcceptEdit = async () => {
+    if (editingDocId == null || !suggestion) return;
+    setApplyState('loading');
+    setApplyError(undefined);
+    try {
+      await applyDocumentEdit(id, editingDocId, {
+        sections: suggestion.proposed_sections,
+        content: suggestion.proposed_content,
+      });
+      setApplyState('success');
+      cancelEdit();
+      load();
+    } catch (err) {
+      setApplyState('error');
+      setApplyError(err instanceof ApiError ? err.message : 'Unknown error');
     }
   };
 
@@ -152,6 +226,7 @@ export function JobDetail() {
               <th>Claim check</th>
               <th>ATS check</th>
               <th>File</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -162,10 +237,69 @@ export function JobDetail() {
                 <td>{checkLabel(doc.claim_check_passed)}</td>
                 <td>{checkLabel(doc.ats_check_passed)}</td>
                 <td>{doc.file_path}</td>
+                <td>
+                  <button type="button" className="secondary" onClick={() => startEdit(doc.id)}>
+                    Suggest edit
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {editingDocId != null && (
+        <div className="result-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <label>
+            What would you like changed?
+            <input
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Make the summary more concise, emphasize the Python experience"
+              disabled={suggestState === 'loading'}
+            />
+          </label>
+          <div className="toolbar">
+            <button type="button" disabled={suggestState === 'loading' || !feedback.trim()} onClick={handleSuggest}>
+              {suggestState === 'loading' ? 'Thinking…' : 'Suggest edit'}
+            </button>
+            <button type="button" className="secondary" onClick={cancelEdit}>
+              Cancel
+            </button>
+          </div>
+          <ApiStatus state={suggestState} error={suggestError} />
+
+          {suggestion && (
+            <div>
+              <p>
+                <strong>Proposed change:</strong> {suggestion.change_summary}
+              </p>
+              <div className="toolbar">
+                <div style={{ flex: 1 }}>
+                  <strong>Current</strong>
+                  <div className="result-description">
+                    {flattenPreview(suggestion.current_sections, suggestion.current_content)}
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <strong>Proposed</strong>
+                  <div className="result-description">
+                    {flattenPreview(suggestion.proposed_sections, suggestion.proposed_content)}
+                  </div>
+                </div>
+              </div>
+              <div className="toolbar">
+                <button type="button" disabled={applyState === 'loading'} onClick={handleAcceptEdit}>
+                  {applyState === 'loading' ? 'Saving…' : 'Accept'}
+                </button>
+                <button type="button" className="secondary" onClick={() => setSuggestion(null)}>
+                  Discard
+                </button>
+              </div>
+              <ApiStatus state={applyState} error={applyError} />
+            </div>
+          )}
+        </div>
       )}
       <div className="toolbar">
         <button type="button" disabled={generatingType !== null} onClick={() => handleGenerate('resume')}>

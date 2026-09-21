@@ -22,7 +22,7 @@ file to match. Don't just adapt frontend code silently to whatever the
 backend happens to return today — that's how the two files quietly stop
 meaning anything.
 
-**Contract version: 6 — 2026-09-21.** Must equal `../CareerOps/CONTRACT.md`'s
+**Contract version: 7 — 2026-09-21.** Must equal `../CareerOps/CONTRACT.md`'s
 version exactly. If they diverge, treat it as a bug to fix, not a note to
 read around.
 
@@ -63,6 +63,8 @@ read around.
 | POST | `/jobs/{job_id}/restore` | bearer | — | `JobStatusActionOut` | 404. Undoes reject |
 | POST | `/jobs/{job_id}/analyze` | bearer | — | `JobDetailOut` | 404. Job detail page's "Analyze" button — real Claude call, takes several seconds; disable the button and show a spinner while it's in flight |
 | POST | `/jobs/{job_id}/documents` | bearer | `GenerateDocumentRequest` | `GeneratedDocumentOut` | 404 job not found, 422 bad `type`. Job detail page's "Generate Resume"/"Generate Cover Letter" buttons — several real Claude calls, can take 20s+; also get-or-creates the job's `Application` row, so the approve/reject/open/mark-applied bar only makes sense to show once at least one document exists. `claim_check_passed`/`ats_check_passed` can be `null` (check didn't run) — render that distinctly from `true`/`false`, don't treat `null` as passed |
+| POST | `/jobs/{job_id}/documents/{document_id}/suggest-edit` | bearer | `SuggestDocumentEditRequest` | `DocumentEditSuggestionOut` | 404 job/document not found. Job Detail page's per-document "Suggest edit" flow, step 1 — **read-only**, one Claude call, nothing saved. Response has exactly one pair set (current_sections/proposed_sections for a resume, current_content/proposed_content for a cover letter) — check the document's own `type` to know which to render, don't rely on which fields are non-null alone since both could theoretically be absent on a malformed response |
+| POST | `/jobs/{job_id}/documents/{document_id}/apply-edit` | bearer | `ApplyDocumentEditRequest` | `GeneratedDocumentOut` | 404 job/document not found, 422 wrong field for this document's type. Step 2 — send back the *exact* `proposed_sections`/`proposed_content` a suggest-edit call returned, don't let the user free-type over it; **no Claude call happens here**, so whatever you send is exactly what gets saved as the new version |
 | POST | `/applications/{application_id}/approve` | bearer | — | `ApplicationActionOut` | 404. Approve/Reject bar |
 | POST | `/applications/{application_id}/reject` | bearer | — | `ApplicationActionOut` | 404. Approve/Reject bar |
 | POST | `/applications/{application_id}/open` | bearer | — | `ApplicationActionOut` | 404. Opens the posting URL **server-side**, not in the caller's browser — see below |
@@ -105,6 +107,11 @@ CompanyTargetOut         { source: string, company: string, identifier: string }
 ScrapeJobspyRequest      { search_term: string, location?: string, sites?: string[], results_wanted?: number = 50, experience?: string }
 
 GenerateDocumentRequest { type: "resume" | "cover_letter" }
+
+ResumeSectionOut         { section: string, content: string, evidence_ids_used: string[] }
+SuggestDocumentEditRequest { feedback: string }
+DocumentEditSuggestionOut { change_summary: string, current_sections?: ResumeSectionOut[], proposed_sections?: ResumeSectionOut[], current_content?: string, proposed_content?: string }
+ApplyDocumentEditRequest { sections?: ResumeSectionOut[], content?: string }
 
 ChatSearchResultOut       = ExploreResultOut & { id: number, summary?: string }  // id = staged-row id (see GET /chat/results); summary = one-line AI summary
 ChatMessageRequest       { session_id: string, message: string, known_filters?: object = {} }  // pass back the prior turn's `filters` verbatim

@@ -1,10 +1,13 @@
 import { apiRequest } from './client';
 import type {
+  ApplyDocumentEditRequest,
+  DocumentEditSuggestionOut,
   GenerateDocumentRequest,
   GeneratedDocumentOut,
   JobDetailOut,
   JobListItemOut,
   JobStatusActionOut,
+  SuggestDocumentEditRequest,
 } from '../types/api';
 
 export interface ListJobsParams {
@@ -48,4 +51,30 @@ export function analyzeJob(jobId: number): Promise<JobDetailOut> {
 // the approve/reject/open/mark-applied bar meaningful for a job.
 export function generateDocument(jobId: number, request: GenerateDocumentRequest): Promise<GeneratedDocumentOut> {
   return apiRequest<GeneratedDocumentOut>(`/jobs/${jobId}/documents`, { method: 'POST', body: request });
+}
+
+// Read-only — one Claude call, no database write. Send the returned
+// proposed_sections/proposed_content back to applyDocumentEdit()
+// verbatim to actually save it.
+export function suggestDocumentEdit(
+  jobId: number,
+  documentId: number,
+  request: SuggestDocumentEditRequest,
+): Promise<DocumentEditSuggestionOut> {
+  return apiRequest<DocumentEditSuggestionOut>(`/jobs/${jobId}/documents/${documentId}/suggest-edit`, {
+    method: 'POST',
+    body: request,
+  });
+}
+
+// No Claude call — persists exactly what was previewed as a new document version.
+export function applyDocumentEdit(
+  jobId: number,
+  documentId: number,
+  request: ApplyDocumentEditRequest,
+): Promise<GeneratedDocumentOut> {
+  return apiRequest<GeneratedDocumentOut>(`/jobs/${jobId}/documents/${documentId}/apply-edit`, {
+    method: 'POST',
+    body: request,
+  });
 }

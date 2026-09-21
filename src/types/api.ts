@@ -65,6 +65,33 @@ export interface GenerateDocumentRequest {
   type: 'resume' | 'cover_letter';
 }
 
+export interface ResumeSectionOut {
+  section: string;
+  content: string;
+  evidence_ids_used: string[];
+}
+
+export interface SuggestDocumentEditRequest {
+  feedback: string;
+}
+
+// Exactly one pair is set, matching the document's own type:
+// current_sections/proposed_sections for "resume", current_content/
+// proposed_content for "cover_letter". Send proposed_sections or
+// proposed_content back to apply-edit verbatim to accept it.
+export interface DocumentEditSuggestionOut {
+  change_summary: string;
+  current_sections?: ResumeSectionOut[];
+  proposed_sections?: ResumeSectionOut[];
+  current_content?: string;
+  proposed_content?: string;
+}
+
+export interface ApplyDocumentEditRequest {
+  sections?: ResumeSectionOut[];
+  content?: string;
+}
+
 export interface ExploreSearchRequest {
   query: string;
   filters?: Record<string, unknown>;
