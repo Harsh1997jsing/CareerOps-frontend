@@ -10,10 +10,18 @@ import type {
   SuggestDocumentEditRequest,
 } from '../types/api';
 
-export interface ListJobsParams {
+// Not exported — only listJobs() itself uses this shape, and nothing
+// outside this file ever imported it (callers just pass an object
+// literal, letting TypeScript infer it structurally).
+interface ListJobsParams {
   status?: string;
   q?: string;
   postedWithinDays?: number;
+  // CONTRACT.md: GET /jobs defaults to limit=50, offset=0 server-side —
+  // Dashboard.tsx exposed neither, so any filter matching more than 50
+  // jobs silently truncated with no way to see the rest.
+  limit?: number;
+  offset?: number;
 }
 
 export function listJobs(params: ListJobsParams = {}): Promise<JobListItemOut[]> {
@@ -21,6 +29,8 @@ export function listJobs(params: ListJobsParams = {}): Promise<JobListItemOut[]>
   if (params.status) search.set('status', params.status);
   if (params.q) search.set('q', params.q);
   if (params.postedWithinDays) search.set('posted_within_days', String(params.postedWithinDays));
+  if (params.limit) search.set('limit', String(params.limit));
+  if (params.offset) search.set('offset', String(params.offset));
   const query = search.toString();
   return apiRequest<JobListItemOut[]>(`/jobs${query ? `?${query}` : ''}`);
 }

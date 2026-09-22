@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   analyzeJob,
@@ -9,7 +9,7 @@ import {
   suggestDocumentEdit,
 } from '../api/jobs';
 import { approveApplication, markApplied, openApplication, rejectApplication } from '../api/applications';
-import { ApiError } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
 import type { DocumentEditSuggestionOut, GeneratedDocumentOut, JobDetailOut } from '../types/api';
 
@@ -57,22 +57,45 @@ export function JobDetail() {
   const [applyState, setApplyState] = useState<ApiState>('idle');
   const [applyError, setApplyError] = useState<string | undefined>();
 
+  // load() is called from 4 independent triggers (mount, Generate,
+  // Approve/Reject/Open/Mark-applied, Accept-edit), unlike Dashboard.tsx's
+  // fetchJobs — which only ever fires from one useEffect, so returning a
+  // cleanup closure is enough there. Here a slow Generate call (a real
+  // Claude call, 20s+) finishing after a fast Approve click could
+  // overwrite the page with a stale snapshot without an explicit guard —
+  // requestIdRef tags each call and only the *latest* one is allowed to
+  // apply its result; isMountedRef additionally stops any of them from
+  // touching state after the component's gone (e.g. navigating away
+  // mid-request).
+  const requestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const load = () => {
+    const requestId = ++requestIdRef.current;
     setLoadState('loading');
     setLoadError(undefined);
     Promise.all([getJob(id), listDocuments(id)])
       .then(([jobResult, docsResult]) => {
+        if (!isMountedRef.current || requestId !== requestIdRef.current) return;
         setJob(jobResult);
         setDocuments(docsResult);
         setLoadState('success');
       })
       .catch((err) => {
+        if (!isMountedRef.current || requestId !== requestIdRef.current) return;
         setLoadState('error');
-        setLoadError(err instanceof ApiError ? err.message : 'Unknown error');
+        setLoadError(getErrorMessage(err));
       });
   };
 
-  useEffect(load, [id]);
+  useEffect(() => {
+    load();
+  }, [id]);
 
   const handleAnalyze = async () => {
     setAnalyzeState('loading');
@@ -83,7 +106,7 @@ export function JobDetail() {
       setAnalyzeState('success');
     } catch (err) {
       setAnalyzeState('error');
-      setAnalyzeError(err instanceof ApiError ? err.message : 'Unknown error');
+      setAnalyzeError(getErrorMessage(err));
     }
   };
 
@@ -94,7 +117,7 @@ export function JobDetail() {
       await generateDocument(id, { type });
       load();
     } catch (err) {
-      setGenerateError(err instanceof ApiError ? err.message : 'Unknown error');
+      setGenerateError(getErrorMessage(err));
     } finally {
       setGeneratingType(null);
     }
@@ -110,7 +133,7 @@ export function JobDetail() {
       setActionState('success');
     } catch (err) {
       setActionState('error');
-      setActionError(err instanceof ApiError ? err.message : 'Unknown error');
+      setActionError(getErrorMessage(err));
     }
   };
 
@@ -139,7 +162,7 @@ export function JobDetail() {
       setSuggestState('success');
     } catch (err) {
       setSuggestState('error');
-      setSuggestError(err instanceof ApiError ? err.message : 'Unknown error');
+      setSuggestError(getErrorMessage(err));
     }
   };
 
@@ -157,7 +180,7 @@ export function JobDetail() {
       load();
     } catch (err) {
       setApplyState('error');
-      setApplyError(err instanceof ApiError ? err.message : 'Unknown error');
+      setApplyError(getErrorMessage(err));
     }
   };
 

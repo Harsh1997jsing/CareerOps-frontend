@@ -18,6 +18,22 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// client.ts has no React context of its own, so it can't update
+// AuthContext's state directly when a session dies mid-app — AuthProvider
+// registers a callback here (on mount) so a 401 can tell it to update
+// `isAuthenticated`, which is what actually makes ProtectedRoute redirect
+// to /login. Without this, only the raw localStorage token got cleared on
+// a 401 — AuthContext never found out, so an expired 8h token left the
+// app stuck believing it was still logged in indefinitely: every request
+// after that silently omitted Authorization, 401'd again, forever, with
+// no redirect (only a manual "Log out" click or a hard refresh recovered).
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
+}
+
 export class ApiError extends Error {
   status: number;
   body: ApiErrorBody | null;
@@ -27,6 +43,13 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+// The `err instanceof ApiError ? err.message : 'Unknown error'` idiom was
+// copy-pasted at every catch site across the app — one shared helper here
+// instead, next to the ApiError class it switches on.
+export function getErrorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : 'Unknown error';
 }
 
 function errorMessage(body: ApiErrorBody | null, status: number): string {
@@ -70,9 +93,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw new ApiError(0, null, 'Could not reach the API. Is the backend running?');
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && auth) {
+    // Scoped to `auth` requests only — an unauthenticated request's 401
+    // (POST /auth/login with a bad password, which always sends
+    // auth: false) is an expected login failure, not a dead session, and
+    // must not clear a different, currently-valid session's token (e.g.
+    // in another tab sharing this same localStorage).
     console.warn(`[api] ${method} ${url} — 401, clearing stored token`);
     clearToken();
+    unauthorizedHandler?.();
   }
 
   if (!response.ok) {

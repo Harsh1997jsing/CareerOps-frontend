@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { getCapabilities, search } from '../api/explore';
-import { ApiError } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
 import { DiscoveredResults } from '../components/DiscoveredResults';
 import type { CapabilityMatrixOut, ExploreResultOut } from '../types/api';
@@ -12,15 +12,30 @@ export function Explore() {
   const [experience, setExperience] = useState('');
   const [results, setResults] = useState<ExploreResultOut[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, CapabilityMatrixOut>>({});
+  // Tracked separately from `capabilities` itself (which starts as {}, the
+  // same shape a genuinely-empty response has) — without this, "still
+  // loading" and "failed to load" were both indistinguishable from "no
+  // sources configured", showing the same misleading message either way.
+  const [capabilitiesState, setCapabilitiesState] = useState<ApiState>('loading');
+  const [capabilitiesError, setCapabilitiesError] = useState<string | undefined>();
   const [state, setState] = useState<ApiState>('idle');
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     // Rule from ../README.md: if a source lacks a capability, disable that
     // filter for it rather than sending it and dropping results.
+    setCapabilitiesState('loading');
+    setCapabilitiesError(undefined);
     getCapabilities()
-      .then(setCapabilities)
-      .catch((err) => console.warn('[explore] capabilities fetch failed', err));
+      .then((caps) => {
+        setCapabilities(caps);
+        setCapabilitiesState('success');
+      })
+      .catch((err) => {
+        console.warn('[explore] capabilities fetch failed', err);
+        setCapabilitiesState('error');
+        setCapabilitiesError(getErrorMessage(err));
+      });
   }, []);
 
   const hasAnySource = Object.keys(capabilities).length > 0;
@@ -60,7 +75,7 @@ export function Explore() {
       setState('success');
     } catch (err) {
       setState('error');
-      setError(err instanceof ApiError ? err.message : 'Unknown error');
+      setError(getErrorMessage(err));
     }
   };
 
@@ -72,7 +87,14 @@ export function Explore() {
         Dashboard until you select results below and add them.
       </p>
 
-      {!hasAnySource && (
+      {capabilitiesState === 'loading' && <p className="empty-state">Checking configured sources…</p>}
+      {capabilitiesState === 'error' && (
+        <p className="empty-state">
+          Could not check configured sources{capabilitiesError ? `: ${capabilitiesError}` : ''} — search may
+          return no results.
+        </p>
+      )}
+      {capabilitiesState === 'success' && !hasAnySource && (
         <p className="empty-state">
           No MCP explore sources are configured (<code>JOBO_MCP_API_KEY</code> /{' '}
           <code>HASDATA_*</code> are empty in the backend's <code>.env</code>) — search will return

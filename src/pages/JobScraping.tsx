@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { scrapeJobspy } from '../api/scrape';
-import { ApiError } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
 import { DiscoveredResults } from '../components/DiscoveredResults';
 import type { ExploreResultOut } from '../types/api';
@@ -42,7 +42,7 @@ export function JobScraping() {
       setState('success');
     } catch (err) {
       setState('error');
-      setError(err instanceof ApiError ? err.message : 'Unknown error');
+      setError(getErrorMessage(err));
     }
   };
 

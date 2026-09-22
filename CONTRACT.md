@@ -14,6 +14,10 @@ three stay mounted/routable but are off the sidebar nav — AI Search
 covers all three of their sources itself now). `auth` admin routes have
 types but no UI consuming them yet.
 
+A full code audit (dead code, correctness bugs, races) lives in
+`CODE_AUDIT.md` — see `../careerops/memory/code-audit.md` for the
+backend's half of the same pass.
+
 **Rule:** if you're building against this and the running backend doesn't
 actually match what's written here, that's a bug — either the backend
 drifted from its own contract, or this file is stale. Fix the mismatch in
@@ -71,7 +75,7 @@ read around.
 | POST | `/applications/{application_id}/mark-applied` | bearer | — | `ApplicationActionOut` | 404. The apply-confirm dialog's action |
 | GET | `/explore/capabilities` | bearer | — | `Record<string, CapabilityMatrixOut>` keyed by MCP source name | Explore page — drives which filters to show/disable per source, and which are required |
 | POST | `/explore/search` | bearer | `ExploreSearchRequest` | `ExploreResultOut[]` | Explore page search — `filters.posted_within_days` (number) drops results older than N days, applied server-side after merging every source. `filters.experience` (string) passes through to a connected source's own experience/seniority param when it has one (see `experience_filter` in `GET /explore/capabilities`) |
-| POST | `/explore/save` | bearer | `ExploreSaveRequest` | `ExploreSaveResponseOut` | **Shared "Add to Dashboard" action for Explore, Target, Job Scraping, and AI Search alike** — not Explore-only despite the path, see below |
+| POST | `/explore/save` | bearer | `ExploreSaveRequest` | `ExploreSaveResponseOut` | **Shared "Add to Dashboard" action for Explore, Target, Job Scraping, and AI Search alike** — not Explore-only despite the path, see below. A newly inserted job is also queued server-side for automatic fit analysis; `inserted: true` in the response doesn't mean analysis is done yet — the Dashboard/Job Detail page will show the result once it lands, no extra call needed |
 | GET | `/targets` | bearer | — | `CompanyTargetOut[]` | Target page — lists configured Greenhouse/Lever targets |
 | POST | `/targets/search` | bearer | query: `experience?` (string, matched against title/description) | `ExploreResultOut[]` | Target page "Search" action — does **not** save; user picks which results to add via `/explore/save` |
 | POST | `/scrape/jobspy` | bearer | `ScrapeJobspyRequest` | `ExploreResultOut[]` | Job Scraping page "Scrape" action — never `linkedin`, up to ~90s, does **not** save; user picks which results to add via `/explore/save`. `experience` (string) matched app-side against whatever a given site reports — not every result will have one |

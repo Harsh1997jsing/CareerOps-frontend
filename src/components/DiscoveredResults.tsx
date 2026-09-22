@@ -1,15 +1,15 @@
 import { useState } from 'react';
+import { getErrorMessage } from '../api/client';
 import { saveResult } from '../api/explore';
 import type { ExploreResultOut } from '../types/api';
+import { daysSince } from '../utils/date';
 
 // CONTRACT.md: ExploreResultOut.posted_at is approximate for some sources
 // (e.g. derived server-side from an integer "days old" for HasData, not a
 // real timestamp) and can be null when no date info was available at all.
 function formatPostedAt(value?: string): string | null {
-  if (!value) return null;
-  const posted = new Date(value);
-  if (Number.isNaN(posted.getTime())) return null;
-  const days = Math.floor((Date.now() - posted.getTime()) / (1000 * 60 * 60 * 24));
+  const days = daysSince(value);
+  if (days == null) return null;
   if (days <= 0) return 'Posted today';
   if (days === 1) return 'Posted 1 day ago';
   return `Posted ${days} days ago`;
@@ -32,6 +32,16 @@ type DiscoveredResult = ExploreResultOut & { id?: number; summary?: string };
 export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  // Tracks rows with an in-flight POST /explore/save — without it, a fast
+  // double-click on "Add to Dashboard" fires two concurrent identical
+  // requests before the first response arrives (isSaved alone only
+  // disables the row *after* a round trip completes).
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  // A single-row add failure previously only logged to console.error —
+  // indistinguishable in the UI from the button just... not doing
+  // anything. Keyed per-row rather than one shared banner, since several
+  // rows can be in flight (via bulk add) at once.
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [bulkState, setBulkState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [bulkMessage, setBulkMessage] = useState<string | undefined>();
 
@@ -57,16 +67,42 @@ export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) 
     );
   };
 
-  const addOne = async (result: ExploreResultOut) => {
+  const addOne = async (result: DiscoveredResult) => {
+    const key = keyOf(result);
+    if (savingIds.has(key) || savedIds.has(key)) return false;
+    setSavingIds((prev) => new Set(prev).add(key));
+    setRowErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     try {
       const res = await saveResult(result);
       if (res.inserted) {
-        setSavedIds((prev) => new Set(prev).add(keyOf(result)));
+        setSavedIds((prev) => new Set(prev).add(key));
       }
+      // Either way this row is now resolved (inserted, or already there)
+      // — drop it from `selected` so the "select all" checkbox's checked
+      // math stays correct and a later bulk-add doesn't redundantly
+      // re-POST a row this row's own button already handled.
+      setSelected((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
       return res.inserted;
     } catch (err) {
       console.error('[discovered-results] add failed', err);
+      setRowErrors((prev) => ({ ...prev, [key]: getErrorMessage(err) }));
       return false;
+    } finally {
+      setSavingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -82,7 +118,7 @@ export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) 
     setBulkMessage(
       failed > 0
         ? `${inserted} added, ${failed} failed.`
-        : `${inserted} of ${toAdd.length} added to Dashboard (rest were already there).`,
+        : `${inserted} of ${toAdd.length} added to Dashboard and queued for analysis (rest were already there).`,
     );
   };
 
@@ -110,12 +146,13 @@ export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) 
         const key = keyOf(result);
         const postedLabel = formatPostedAt(result.posted_at);
         const isSaved = savedIds.has(key);
+        const isSaving = savingIds.has(key);
         return (
           <div className="result-row" key={key}>
             <input
               type="checkbox"
               checked={selected.has(key)}
-              disabled={isSaved}
+              disabled={isSaved || isSaving}
               onChange={() => toggleSelected(key)}
             />
             <div className="result-main">
@@ -124,14 +161,21 @@ export function DiscoveredResults({ results }: { results: DiscoveredResult[] }) 
               <div className="result-description">
                 {result.summary ?? `${result.description.slice(0, 160)}…`}
               </div>
+              {rowErrors[key] && <p className="api-status api-status-error">Could not add: {rowErrors[key]}</p>}
             </div>
             <div className="result-actions">
               <span className="source-badge">{result.source}</span>
               <button type="button" onClick={() => window.open(result.url, '_blank', 'noreferrer')}>
                 Apply
               </button>
-              <button type="button" className="secondary" disabled={isSaved} onClick={() => addOne(result)}>
-                {isSaved ? 'Added' : 'Add to Dashboard'}
+              <button
+                type="button"
+                className="secondary"
+                disabled={isSaved || isSaving}
+                onClick={() => addOne(result)}
+                title={isSaved ? 'Fit analysis runs automatically — check the Dashboard shortly.' : undefined}
+              >
+                {isSaved ? 'Added' : isSaving ? 'Adding…' : 'Add to Dashboard'}
               </button>
             </div>
           </div>

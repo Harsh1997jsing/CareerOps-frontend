@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listTargets, searchTargets } from '../api/targets';
-import { ApiError } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
 import { DiscoveredResults } from '../components/DiscoveredResults';
 import type { CompanyTargetOut, ExploreResultOut } from '../types/api';
@@ -23,7 +23,7 @@ export function Target() {
       })
       .catch((err) => {
         setListState('error');
-        setListError(err instanceof ApiError ? err.message : 'Unknown error');
+        setListError(getErrorMessage(err));
       });
   }, []);
 
@@ -36,7 +36,7 @@ export function Target() {
       setSearchState('success');
     } catch (err) {
       setSearchState('error');
-      setSearchError(err instanceof ApiError ? err.message : 'Unknown error');
+      setSearchError(getErrorMessage(err));
     }
   };
 

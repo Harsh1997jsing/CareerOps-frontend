@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { getStagedResults, sendMessage } from '../api/chat';
-import { ApiError } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
 import { DiscoveredResults } from '../components/DiscoveredResults';
 import type { ChatSearchResultOut } from '../types/api';
@@ -31,14 +31,27 @@ export function Chat() {
   const [results, setResults] = useState<ChatSearchResultOut[]>([]);
   const [state, setState] = useState<ApiState>('idle');
   const [error, setError] = useState<string | undefined>();
+  const [restoreState, setRestoreState] = useState<ApiState>('loading');
+  const [restoreError, setRestoreError] = useState<string | undefined>();
 
   // Restores results staged by an earlier turn (e.g. after a page refresh)
   // without resending anything through the model — GET /chat/results is
-  // plain staged-row lookup, not a chat turn.
+  // plain staged-row lookup, not a chat turn. Previously silent on
+  // failure (console.warn only) — a real failure here looked identical to
+  // "nothing was ever staged", with no way to tell the two apart or retry.
   useEffect(() => {
+    setRestoreState('loading');
+    setRestoreError(undefined);
     getStagedResults(sessionId)
-      .then(setResults)
-      .catch((err) => console.warn('[chat] could not restore staged results', err));
+      .then((staged) => {
+        setResults(staged);
+        setRestoreState('success');
+      })
+      .catch((err) => {
+        console.warn('[chat] could not restore staged results', err);
+        setRestoreState('error');
+        setRestoreError(getErrorMessage(err));
+      });
   }, [sessionId]);
 
   const handleSend = async (e: FormEvent) => {
@@ -59,7 +72,7 @@ export function Chat() {
       setState('success');
     } catch (err) {
       setState('error');
-      setError(err instanceof ApiError ? err.message : 'Unknown error');
+      setError(getErrorMessage(err));
       setTurns((prev) => [...prev, { role: 'assistant', content: "Sorry, that search didn't go through." }]);
     }
   };
@@ -72,6 +85,10 @@ export function Chat() {
         and the assistant picks which source(s) to search (<code>POST /chat/message</code>).
         Nothing is added to the Dashboard until you select results below and add them.
       </p>
+
+      {(restoreState === 'loading' || restoreState === 'error') && (
+        <ApiStatus state={restoreState} error={restoreError} />
+      )}
 
       <div className="chat-transcript">
         {turns.map((turn, i) => (

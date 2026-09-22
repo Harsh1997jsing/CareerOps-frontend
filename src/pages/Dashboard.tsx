@@ -1,23 +1,28 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listJobs, rejectJob, restoreJob } from '../api/jobs';
-import { ApiError } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ApiStatus, type ApiState } from '../components/ApiStatus';
 import type { JobListItemOut } from '../types/api';
+import { daysSince } from '../utils/date';
 
-// Same approximate-date convention as Explore.tsx's formatPostedAt —
-// CONTRACT.md: JobListItemOut.posted_at falls back to collected_at when
-// the source never gave a real posting date, so this is "posted, or if
-// unknown, added to this app" — not always the employer's own date.
+// Same approximate-date convention as DiscoveredResults.tsx's
+// formatPostedAt — CONTRACT.md: JobListItemOut.posted_at falls back to
+// collected_at when the source never gave a real posting date, so this is
+// "posted, or if unknown, added to this app" — not always the employer's
+// own date.
 function formatPostedAt(value?: string): string | null {
-  if (!value) return null;
-  const posted = new Date(value);
-  if (Number.isNaN(posted.getTime())) return null;
-  const days = Math.floor((Date.now() - posted.getTime()) / (1000 * 60 * 60 * 24));
+  const days = daysSince(value);
+  if (days == null) return null;
   if (days <= 0) return 'today';
   if (days === 1) return '1 day ago';
   return `${days} days ago`;
 }
+
+// Matches GET /jobs' own default limit (CONTRACT.md) — Dashboard
+// previously never sent limit/offset at all, so any filter matching more
+// than this silently truncated with no indication more jobs existed.
+const PAGE_SIZE = 50;
 
 export function Dashboard() {
   const [jobs, setJobs] = useState<JobListItemOut[]>([]);
@@ -26,10 +31,23 @@ export function Dashboard() {
   const [statusFilter, setStatusFilter] = useState('');
   const [q, setQ] = useState('');
   const [postedWithinDays, setPostedWithinDays] = useState('');
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkState, setBulkState] = useState<ApiState>('idle');
   const [bulkError, setBulkError] = useState<string | undefined>();
   const [bulkMessage, setBulkMessage] = useState<string | undefined>();
+
+  // A new filter value makes the current `page` meaningless (page 3 of a
+  // narrower search may not exist) — resetting it here, in the setters
+  // rather than the fetch effect, keeps "filter changed" and "page
+  // changed" as one combined, single re-fetch instead of two.
+  const updateFilter = (setter: (value: string) => void) => (value: string) => {
+    setter(value);
+    setPage(0);
+  };
+  const handleStatusFilterChange = updateFilter(setStatusFilter);
+  const handleQChange = updateFilter(setQ);
+  const handlePostedWithinDaysChange = updateFilter(setPostedWithinDays);
 
   const fetchJobs = () => {
     let cancelled = false;
@@ -39,6 +57,8 @@ export function Dashboard() {
       status: statusFilter || undefined,
       q: q || undefined,
       postedWithinDays: postedWithinDays ? Number(postedWithinDays) : undefined,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     })
       .then((result) => {
         if (cancelled) return;
@@ -49,14 +69,14 @@ export function Dashboard() {
       .catch((err) => {
         if (cancelled) return;
         setState('error');
-        setError(err instanceof ApiError ? err.message : 'Unknown error');
+        setError(getErrorMessage(err));
       });
     return () => {
       cancelled = true;
     };
   };
 
-  useEffect(fetchJobs, [statusFilter, q, postedWithinDays]);
+  useEffect(fetchJobs, [statusFilter, q, postedWithinDays, page]);
 
   const toggleSelected = (jobId: number) => {
     setSelected((prev) => {
@@ -109,7 +129,7 @@ export function Dashboard() {
       <div className="toolbar">
         <label>
           Status
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <select value={statusFilter} onChange={(e) => handleStatusFilterChange(e.target.value)}>
             <option value="">All</option>
             <option value="DISCOVERED">DISCOVERED</option>
             <option value="READY_FOR_REVIEW">READY_FOR_REVIEW</option>
@@ -125,11 +145,11 @@ export function Dashboard() {
         </label>
         <label>
           Description contains
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="python" />
+          <input value={q} onChange={(e) => handleQChange(e.target.value)} placeholder="python" />
         </label>
         <label>
           Posted within
-          <select value={postedWithinDays} onChange={(e) => setPostedWithinDays(e.target.value)}>
+          <select value={postedWithinDays} onChange={(e) => handlePostedWithinDaysChange(e.target.value)}>
             <option value="">Any time</option>
             <option value="1">Last 1 day</option>
             <option value="3">Last 3 days</option>
@@ -221,6 +241,23 @@ export function Dashboard() {
               ))}
             </tbody>
           </table>
+
+          <div className="toolbar">
+            <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+              ← Prev
+            </button>
+            <span>Page {page + 1}</span>
+            {/* GET /jobs has no total-count field to page against (CONTRACT.md)
+                — a full page is the only signal a next one might exist. */}
+            <button
+              type="button"
+              className="secondary"
+              disabled={jobs.length < PAGE_SIZE}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next →
+            </button>
+          </div>
         </>
       )}
     </div>

@@ -16,6 +16,38 @@ export interface TokenOut {
   email: string;
 }
 
+// `auth` admin routes (/auth/users, /auth/tenants) have these types but no
+// UI consuming them yet (CONTRACT.md: "This app doesn't plan to expose
+// admin-only UI yet").
+export interface UserOut {
+  id: number;
+  tenant_id: number;
+  email: string;
+  role: string;
+  is_default_admin: boolean;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface UserCreateRequest {
+  email: string;
+  password: string;
+  role?: string;
+}
+
+export interface TenantOut {
+  id: number;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface TenantCreateRequest {
+  name: string;
+  slug: string;
+}
+
 export interface ApplicationOut {
   application_id: number;
   status: string;
@@ -131,7 +163,7 @@ export interface ChatSearchResultOut extends ExploreResultOut {
 export interface ChatMessageRequest {
   session_id: string;
   message: string;
-  known_filters: Record<string, unknown>;
+  known_filters?: Record<string, unknown>;
 }
 
 export interface ChatMessageResponse {
